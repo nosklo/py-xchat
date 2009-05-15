@@ -31,13 +31,20 @@ __module_description__ = "Removes clutter from your conversations"
 
 import xchat
 import time
+import logging
 
-def debug(info):
-    if __module_DEBUG__:
-        print info
+DEBUG_LEVEL = logging.INFO
+
+logger = logging.getLogger('clutterless')
+logger.setLevel(DEBUG_LEVEL)
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter("[%(asctime)s] %(name)s{%(levelname)s}: %(message)s")
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 class JoinPartFilter(object):
-    def __init__(self, timeout=120):
+    def __init__(self, timeout=300):
         self.timeout = timeout
         self.actions = {}
         for action in (
@@ -58,6 +65,8 @@ class JoinPartFilter(object):
                 ):
             xchat.hook_print(supressed, self.supress, userdata=supressed)
         xchat.hook_print('Change Nick', self.rename, priority=xchat.PRI_LOW)
+        xchat.hook_command('clutterdebug', self.cmd_debug)
+        xchat.hook_command('cluttershow', self.cmd_show)
 
     def fix_nick(self, nick):
         while nick.startswith('\x03'):
@@ -67,7 +76,7 @@ class JoinPartFilter(object):
     def action(self, word, word_eol, userdata): 
         nick = self.fix_nick(word[0])
         self.actions[nick] = time.time()
-        debug("action for %r registered: %r, %r" % (nick, word, userdata))
+        logger.debug("action for %r registered: %r, %r", nick, word, userdata)
         
     def timed_out(self, nick):
         now = time.time()
@@ -76,17 +85,32 @@ class JoinPartFilter(object):
     def supress(self, word, word_eol, userdata):
         nick = self.fix_nick(word[0])
         if self.timed_out(nick):
-            debug("supressing %r: %r" % (userdata, word))
+            logger.debug("supressing %r: %r", userdata, word)
             return xchat.EAT_XCHAT
         else:
-            debug("Not supressing %r: %r" % (userdata, word))
+            logger.debug("Not supressing %r: %r", userdata, word)
     
     def rename(self, word, word_eol, userdata):
         nick1 = self.fix_nick(word[0])
         nick2 = self.fix_nick(word[1])
         if nick1 in self.actions:
+            logger.debug("Renaming %r to %r", nick1, nick2)
             self.actions[nick2] = self.actions[nick1]
             del self.actions[nick1]
+    
+    def cmd_show(self, word, word_eol, userdata):
+        import pprint
+        pprint.pprint(self.actions)
+        return xchat.EAT_ALL
+
+    def cmd_debug(self, word, word_eol, userdata):
+        if len(word) < 1:
+            logger.error('Need the level for %r', word[0])
+        else:
+            logger.info("changing debug level to %r", word[1])
+            logger.setLevel(logging.getLevelName(word[1]))
+        return xchat.EAT_ALL
+        
             
 plugin = JoinPartFilter()
 
