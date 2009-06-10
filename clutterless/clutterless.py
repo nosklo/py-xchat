@@ -34,7 +34,7 @@ import logging
 import functools
 import re
 from UserDict import DictMixin
-from collections import deque
+from collections import deque, defaultdict
 
 DEBUG_LEVEL = logging.INFO
 
@@ -137,9 +137,9 @@ class JoinPartFilter(object):
             del self.active[nick1]
     
     def cmd_show(self, word, word_eol, userdata):
-        import pprint
-        pprint.pprint(dict((nick, time.time() - t)
-                           for nick, t in self.active.iteritems()))
+        if self.active:
+            logger.info(' '.join('%s[%.2f]' % (nick, time.time() - t)
+                                 for nick, t in self.active.iteritems()))
         return xchat.EAT_ALL
 
     def cmd_debug(self, word, word_eol, userdata):
