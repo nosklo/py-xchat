@@ -64,16 +64,15 @@ class TimeoutChecker(dict, DictMixin):
     def clean(self):
         now = self._time()
         for key in self.keys():
-            if self[key] + self.timeout > now:
+            if dict.__getitem__(self, key) + self.timeout > now:
                 del self[key]
 
     def autocleans(func):
-        @functools.wraps
+        @functools.wraps(func)
         def _method(self, *args, **kwds):
             if self.autoclean:
                 self.clean()
             return func(self, *args, **kwds)
-        print "Created method for %r" % func.func_name
         return _method
 
     @autocleans
@@ -104,7 +103,7 @@ class JoinPartFilter(object):
                 ):
             xchat.hook_print(action, self.action, userdata=action)
         for supressed in (
-                    'Join',
+                    'Join', 
                     'Part',
                     'Part with Reason',
                     'Change Nick',
@@ -130,8 +129,8 @@ class JoinPartFilter(object):
             return xchat.EAT_XCHAT
     
     def rename(self, word, word_eol, userdata):
-        nick1 = self.fix_nick(word[0])
-        nick2 = self.fix_nick(word[1])
+        nick1 = remove_mirc_color(word[0])
+        nick2 = remove_mirc_color(word[1])
         if nick1 in self.active:
             logger.debug("Renaming %r to %r", nick1, nick2)
             self.active[nick2] = self.active[nick1]
@@ -143,7 +142,6 @@ class JoinPartFilter(object):
         return xchat.EAT_ALL
 
     def cmd_debug(self, word, word_eol, userdata):
-        print len(word)
         if len(word) <= 1:
             logger.error('Need the level for %r', word[0])
         else:
