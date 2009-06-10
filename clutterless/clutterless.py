@@ -24,7 +24,6 @@ For now it only removes join/parts, more to come. See TODO.
 
 TODO: Create a TODO.
 """
-__module_DEBUG__ = False
 __module_name__ = "clutterless" 
 __module_version__ = "0.1" 
 __module_description__ = "Removes clutter from your conversations" 
@@ -32,6 +31,10 @@ __module_description__ = "Removes clutter from your conversations"
 import xchat
 import time
 import logging
+import functools
+import re
+from UserDict import DictMixin
+from collections import deque
 
 DEBUG_LEVEL = logging.INFO
 
@@ -43,10 +46,54 @@ formatter = logging.Formatter("[%(asctime)s] %(name)s{%(levelname)s}: %(message)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+_regex_mirc_color = re.compile("\x03(?:(\d{1,2})(?:,(\d{1,2}))?)?")
+
+def remove_mirc_color(text):
+    return _regex_mirc_color.sub('', text)
+
+class TimeoutChecker(dict, DictMixin):
+    def __init__(self, timeout, autoclean=True, time_func=time.time):
+        self.timeout = timeout
+        self.autoclean = autoclean
+        self._time = time_func
+
+    def register(self, key):
+        """Registers a new key"""
+        self[key] = self._time()
+
+    def clean(self):
+        now = self._time()
+        for key in self.keys():
+            if self[key] + self.timeout > now:
+                del self[key]
+
+    def autocleans(func):
+        @functools.wraps
+        def _method(self, *args, **kwds):
+            if self.autoclean:
+                self.clean()
+            return func(self, *args, **kwds)
+        print "Created method for %r" % func.func_name
+        return _method
+
+    @autocleans
+    def __contains__(self, key):
+        """
+        checks if a key has timed out or not
+        key: the key to search
+        returns: True if the key is still active, False if it timed out.        
+        """
+        return dict.__contains__(self, key)
+    
+    @autocleans
+    def __getitem__(self, key):
+        return dict.__getitiem__(self, key)
+
 class JoinPartFilter(object):
     def __init__(self, timeout=300):
         self.timeout = timeout
         self.actions = {}
+        self.active = TimeoutChecker(timeout)
         for action in (
                     'Channel Action',
                     'Channel Action Hilight',
@@ -68,43 +115,36 @@ class JoinPartFilter(object):
         xchat.hook_command('clutterdebug', self.cmd_debug)
         xchat.hook_command('cluttershow', self.cmd_show)
 
-    def fix_nick(self, nick):
-        while nick.startswith('\x03'):
-            nick = nick[3:]
-        return nick
 
-    def action(self, word, word_eol, userdata): 
-        nick = self.fix_nick(word[0])
-        self.actions[nick] = time.time()
+    def action(self, word, word_eol, userdata):
+        nick = remove_mirc_color(word[0])
+        self.active.register(nick)
         logger.debug("action for %r registered: %r, %r", nick, word, userdata)
-        
-    def timed_out(self, nick):
-        now = time.time()
-        return now - self.actions.get(nick, 0) >= self.timeout
-    
+            
     def supress(self, word, word_eol, userdata):
-        nick = self.fix_nick(word[0])
-        if self.timed_out(nick):
+        nick = remove_mirc_color(word[0])
+        if nick in self.active:
+            logger.debug("Not supressing %r: %r", userdata, word)
+        else:
             logger.debug("supressing %r: %r", userdata, word)
             return xchat.EAT_XCHAT
-        else:
-            logger.debug("Not supressing %r: %r", userdata, word)
     
     def rename(self, word, word_eol, userdata):
         nick1 = self.fix_nick(word[0])
         nick2 = self.fix_nick(word[1])
-        if nick1 in self.actions:
+        if nick1 in self.active:
             logger.debug("Renaming %r to %r", nick1, nick2)
-            self.actions[nick2] = self.actions[nick1]
-            del self.actions[nick1]
+            self.active[nick2] = self.active[nick1]
+            del self.active[nick1]
     
     def cmd_show(self, word, word_eol, userdata):
         import pprint
-        pprint.pprint(self.actions)
+        pprint.pprint(self.active)
         return xchat.EAT_ALL
 
     def cmd_debug(self, word, word_eol, userdata):
-        if len(word) < 1:
+        print len(word)
+        if len(word) <= 1:
             logger.error('Need the level for %r', word[0])
         else:
             logger.info("changing debug level to %r", word[1])
