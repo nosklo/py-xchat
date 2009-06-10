@@ -64,7 +64,9 @@ class TimeoutChecker(dict, DictMixin):
     def clean(self):
         now = self._time()
         for key in self.keys():
-            if dict.__getitem__(self, key) + self.timeout > now:
+            t = now - dict.__getitem__(self, key)
+            if  t > self.timeout:
+                logger.debug('cleaning %s for %r ' % (key, t))
                 del self[key]
 
     def autocleans(func):
@@ -90,8 +92,6 @@ class TimeoutChecker(dict, DictMixin):
 
 class JoinPartFilter(object):
     def __init__(self, timeout=300):
-        self.timeout = timeout
-        self.actions = {}
         self.active = TimeoutChecker(timeout)
         for action in (
                     'Channel Action',
@@ -138,7 +138,8 @@ class JoinPartFilter(object):
     
     def cmd_show(self, word, word_eol, userdata):
         import pprint
-        pprint.pprint(self.active)
+        pprint.pprint(dict((nick, time.time() - t)
+                           for nick, t in self.active.iteritems()))
         return xchat.EAT_ALL
 
     def cmd_debug(self, word, word_eol, userdata):
