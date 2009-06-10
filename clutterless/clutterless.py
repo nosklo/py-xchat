@@ -92,7 +92,7 @@ class TimeoutChecker(dict, DictMixin):
 
 class JoinPartFilter(object):
     def __init__(self, timeout=300):
-        self.active = TimeoutChecker(timeout)
+        self.active = defaultdict(lambda: TimeoutChecker(timeout))
         for action in (
                     'Channel Action',
                     'Channel Action Hilight',
@@ -117,12 +117,14 @@ class JoinPartFilter(object):
 
     def action(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
-        self.active.register(nick)
+        channel = xchat.get_context().get_info('channel')
+        self.active[channel].register(nick)
         logger.debug("action for %r registered: %r, %r", nick, word, userdata)
             
     def supress(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
-        if nick in self.active:
+        channel = xchat.get_context().get_info('channel')
+        if nick in self.active[channel]:
             logger.debug("Not supressing %r: %r", userdata, word)
         else:
             logger.debug("supressing %r: %r", userdata, word)
@@ -131,15 +133,21 @@ class JoinPartFilter(object):
     def rename(self, word, word_eol, userdata):
         nick1 = remove_mirc_color(word[0])
         nick2 = remove_mirc_color(word[1])
-        if nick1 in self.active:
+        channel = xchat.get_context().get_info('channel')
+        if nick1 in self.active[channel]:
             logger.debug("Renaming %r to %r", nick1, nick2)
-            self.active[nick2] = self.active[nick1]
-            del self.active[nick1]
+            self.active[channel][nick2] = self.active[channel][nick1]
+            del self.active[channel][nick1]
     
+
     def cmd_show(self, word, word_eol, userdata):
-        if self.active:
-            logger.info(' '.join('%s[%.2f]' % (nick, time.time() - t)
-                                 for nick, t in self.active.iteritems()))
+        channel = xchat.get_context().get_info('channel')
+        if self.active[channel]:
+            data = ' '.join('%s[%.2f]' % (nick, time.time() - t)
+                            for nick, t in self.active[channel].iteritems())
+            logger.info('[%s] %s' % (channel, data))
+        else:
+            logger.info('Nada registrado para %r' % (channel,))
         return xchat.EAT_ALL
 
     def cmd_debug(self, word, word_eol, userdata):
