@@ -24,15 +24,16 @@ For now it only removes join/parts, more to come. See TODO.
 
 TODO: Create a TODO.
 """
-__module_name__ = "clutterless" 
-__module_version__ = "0.1" 
-__module_description__ = "Removes clutter from your conversations" 
+__module_name__ = "clutterless"
+__module_version__ = "0.1.1"
+__module_description__ = "Removes clutter from your conversations"
 
 import xchat
 import time
 import logging
 import functools
 import re
+import operator
 from UserDict import DictMixin
 from collections import deque, defaultdict
 
@@ -51,7 +52,7 @@ _regex_mirc_color = re.compile("\x03(?:(\d{1,2})(?:,(\d{1,2}))?)?")
 def remove_mirc_color(text):
     return _regex_mirc_color.sub('', text)
 
-class TimeoutChecker(dict, DictMixin):
+class TimeoutChecker(DictMixin, dict):
     def __init__(self, timeout, autoclean=True, time_func=time.time):
         self.timeout = timeout
         self.autoclean = autoclean
@@ -82,13 +83,13 @@ class TimeoutChecker(dict, DictMixin):
         """
         checks if a key has timed out or not
         key: the key to search
-        returns: True if the key is still active, False if it timed out.        
+        returns: True if the key is still active, False if it timed out.
         """
         return dict.__contains__(self, key)
-    
+
     @autocleans
     def __getitem__(self, key):
-        return dict.__getitiem__(self, key)
+        return dict.__getitem__(self, key)
 
 class JoinPartFilter(object):
     def __init__(self, timeout=300):
@@ -103,7 +104,7 @@ class JoinPartFilter(object):
                 ):
             xchat.hook_print(action, self.action, userdata=action)
         for supressed in (
-                    'Join', 
+                    'Join',
                     'Part',
                     'Part with Reason',
                     'Change Nick',
@@ -114,13 +115,12 @@ class JoinPartFilter(object):
         xchat.hook_command('clutterdebug', self.cmd_debug)
         xchat.hook_command('cluttershow', self.cmd_show)
 
-
     def action(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
         channel = xchat.get_context().get_info('channel')
         self.active[channel].register(nick)
         logger.debug("action for %r registered: %r, %r", nick, word, userdata)
-            
+
     def supress(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
         channel = xchat.get_context().get_info('channel')
@@ -129,7 +129,7 @@ class JoinPartFilter(object):
         else:
             logger.debug("supressing %r: %r", userdata, word)
             return xchat.EAT_XCHAT
-    
+
     def rename(self, word, word_eol, userdata):
         nick1 = remove_mirc_color(word[0])
         nick2 = remove_mirc_color(word[1])
@@ -138,16 +138,17 @@ class JoinPartFilter(object):
             logger.debug("Renaming %r to %r", nick1, nick2)
             self.active[channel][nick2] = self.active[channel][nick1]
             del self.active[channel][nick1]
-    
 
     def cmd_show(self, word, word_eol, userdata):
         channel = xchat.get_context().get_info('channel')
         if self.active[channel]:
             data = ' '.join('%s[%.2f]' % (nick, time.time() - t)
-                            for nick, t in self.active[channel].iteritems())
+                            for nick, t 
+                            in sorted(self.active[channel].iteritems(),
+                                      key=operator.itemgetter(1)))
             logger.info('[%s] %s' % (channel, data))
         else:
-            logger.info('Nada registrado para %r' % (channel,))
+            logger.info('Nothing registered for %r' % (channel,))
         return xchat.EAT_ALL
 
     def cmd_debug(self, word, word_eol, userdata):
@@ -157,7 +158,6 @@ class JoinPartFilter(object):
             logger.info("changing debug level to %r", word[1])
             logger.setLevel(logging.getLevelName(word[1]))
         return xchat.EAT_ALL
-        
-            
+
 plugin = JoinPartFilter()
 
