@@ -143,7 +143,7 @@ class JoinPartFilter(object):
         channel = xchat.get_context().get_info('channel')
         if self.active[channel]:
             data = ' '.join('%s[%.2f]' % (nick, time.time() - t)
-                            for nick, t 
+                            for nick, t
                             in sorted(self.active[channel].iteritems(),
                                       key=operator.itemgetter(1)))
             logger.info('[%s] %s' % (channel, data))
@@ -160,4 +160,3 @@ class JoinPartFilter(object):
         return xchat.EAT_ALL
 
 plugin = JoinPartFilter()
-
