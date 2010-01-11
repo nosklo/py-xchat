@@ -47,10 +47,10 @@ formatter = logging.Formatter("[%(asctime)s] %(name)s{%(levelname)s}: %(message)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-_regex_mirc_color = re.compile("\x03(?:(\d{1,2})(?:,(\d{1,2}))?)?")
-
-def remove_mirc_color(text):
-    return _regex_mirc_color.sub('', text)
+def remove_mirc_color(text, 
+        _remove_re_sub=re.compile(re.escape("\x03") + 
+                                  r"(?:(\d{1,2})(?:,(\d{1,2}))?)?").sub):
+    return _remove_re_sub('', text)
 
 class TimeoutChecker(DictMixin, dict):
     def __init__(self, timeout, autoclean=True, time_func=time.time):
@@ -119,7 +119,7 @@ class JoinPartFilter(object):
         nick = remove_mirc_color(word[0])
         channel = xchat.get_context().get_info('channel')
         self.active[channel].register(nick)
-        logger.debug("action for %r registered: %r, %r", nick, word, userdata)
+        logger.debug("%r registered for %r: %r", userdata, nick, word)
 
     def supress(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
