@@ -34,8 +34,9 @@ import logging
 import functools
 import re
 import operator
-from UserDict import DictMixin
-from collections import deque, defaultdict
+import textwrap
+
+from collections import defaultdict
 
 DEBUG_LEVEL = logging.INFO
 
@@ -60,8 +61,6 @@ class LastSeen(object):
         self.perc_cut = perc_cut
         self._order = data
         self.clean()
-
-
 
     def add(self, user):
         if user in self._order: #self._data:
@@ -94,7 +93,7 @@ class LastSeen(object):
 
 class ActiveChannel(object):
     def __init__(self, timeout=300, autoclean=True, time_func=time.time, 
-                       linecut=50, minlastseen=2, perclastseen=1):
+                       linecut=30, minlastseen=2, perclastseen=1):
         self.timeout = timeout
         self.autoclean = autoclean
         self._time = time_func
@@ -122,7 +121,7 @@ class ActiveChannel(object):
         self._special.add(nick)
         self.register(nick)
 
-    def show(self):
+    def info(self):
         timeout_data = ' '.join('%s[%.2f]' % (nick, time.time() - t)
                                 for nick, t
                                 in sorted(self._timeout_data.iteritems(),
@@ -135,7 +134,7 @@ class ActiveChannel(object):
         lastseen_data = ','.join(self._lastseen)
         special_data = ','.join(self._special)
         
-        return 'Timeout(%s), Lineno(%s), LastSeen(%s), Special(%s)' % (
+        return '* Timeout(%s)\n* Lineno(%s)\n* LastSeen(%s)\n* Special(%s)' % (
                 timeout_data, lineno_data, lastseen_data, special_data)
 
     def clean(self):
@@ -185,6 +184,8 @@ class ActiveChannel(object):
         if nick1 in self._special:
             self._special.remove(nick1)
             self._special.add(nick2)            
+
+    del autocleans
         
 class JoinPartFilter(object):
     def __init__(self):
@@ -194,7 +195,6 @@ class JoinPartFilter(object):
                     'Channel Action Hilight',
                     'DCC CHAT Offer',
                     'Channel Message',
-                    'Channel Msg Hilight',
                 ):
             xchat.hook_print(action, self.action, userdata=action)
         for supressed in (
@@ -209,38 +209,112 @@ class JoinPartFilter(object):
         
         xchat.hook_print('Change Nick', self.rename, priority=xchat.PRI_LOW)
         
-        xchat.hook_print('Your Message', self.extract_nick)
+        xchat.hook_print('Your Message', self.message)
         for special in (
                     'Message Send',
+                    'Channel Msg Hilight',
                 ):
             xchat.hook_print(special, self.special, userdata=special)
         
-        xchat.hook_command('clutterdebug', self.cmd_debug)
-        xchat.hook_command('cluttershow', self.cmd_show)
-#        xchat.hook_command('clutter', self.cmd_clutter)
+        xchat.hook_command('clutter', self._cmd, help=self.cmd_help())
+        xchat.hook_command('', self.verify_errors)
+        self.last_msg = None
 
+    def verify_errors(self, word, word_eol, userdata):
+        nick = self._extract_nick(word[0])
+        if word_eol[0] != self.last_msg:
+            self.last_msg = word_eol[0]
+            if nick == xchat.get_info('nick'):
+                print 'WARNING: Sending message to yourself - repeat to confirm'
+                return xchat.EAT_ALL
+            elif nick and all(nick != user.nick for user in xchat.get_list('users')):
+                print 'WARNING: %r is not here. Repeat to confirm.' % nick
+                return xchat.EAT_ALL
+
+    def _extract_nick(self, text):
+        nick, sep, rest = text.partition(xchat.get_prefs('completion_suffix'))
+        if sep and ' ' not in nick:
+            nick = remove_mirc_color(nick)
+            return nick
+        else:
+            return None
+
+    def _cmd(self, word, word_eol, userdata):
+        logger.debug('CLUTTER command - got %r', word)
+        if len(word) < 2:
+            logger.info('helping 1')
+            print self.cmd_help()
+        else:
+            cmd = getattr(self, 'cmd_' + word[1], self.cmd_help)
+            try:
+                result = cmd(*word[2:])
+            except TypeError as e:
+                result = str(e)
+            if result:
+                print textwrap.dedent(result).strip().replace('\n', '\r\n')
+        return xchat.EAT_ALL
+
+    def cmd_help(self, command=None):
+        """
+        Syntax: /CLUTTER HELP [command]
+
+        Shows help about a command.
+        """
+        if command:
+            try:
+                result = getattr(self, 'cmd_' + command).__doc__
+            except AttributeError:
+                result = None
+            if result is None:
+                result = 'clutterless: Help not found for %r' % command
+            return result
+        else:
+            return ('clutterless: Commands available:\n\n' + 
+                    ', '.join(cmd[4:] for cmd in dir(self) 
+                             if cmd.startswith('cmd_')))
+        
+    def cmd_info(self):
+        """
+        Syntax: /CLUTTER INFO
+
+        Shows clutterless stored information about current channel.
+        """
+        channel = self._get_channel()
+        if self.active[channel]:
+            data = self.active[channel].info()           
+            return 'clutterless data for [%s]:\n%s' % ('@'.join(reversed(channel)), 
+                                                       data)
+        else:
+            return 'clutterless: No data on [%s]' % '@'.join(reversed(channel))
+
+    def cmd_debug(self, level):
+        """
+        Syntax: /CLUTTER DEBUG {CRITICAL|ERROR|WARNING|INFO|DEBUG}
+
+        Sets the level of the debug logger
+        """
+        logger.setLevel(logging.getLevelName(level))
+        return "clutterless: changing debug level to %r" % level
 
     def _get_channel(self):
         info = xchat.get_context().get_info
         return tuple(info(t) for t in ('host', 'channel'))
     
-    def extract_nick(self, word, word_eol, *data):
+    def message(self, word, word_eol, user):
         """People you talk to becomes *special* - can have more timeout"""
-        nick, sep, rest = word[1].partition(xchat.get_prefs('completion_suffix'))
-        nick = remove_mirc_color(nick)
-        if sep and ' ' not in nick:
+        nick = self._extract_nick(word[1])
+        if nick:
             # a nick, register as special
             logger.debug('Registering special nick %r', nick)
             activechan = self.active[self._get_channel()]
             activechan.register_special(nick)
 
     def special(self, word, word_eol, userdata):
-        nick = remove_mirc_color(word[0])
-        logger.info('special called %r', word)
-#        activechan = self.active[self._get_channel()]
-#        logger.debug("%r(%d) special register for %r: %r", userdata, activechan._lineno, 
-#                                                           nick, word)
-#        activechan.register(nick)
+        nick = remove_mirc_color(word[0])  
+        activechan = self.active[self._get_channel()]
+        logger.debug("%r(%d) special register for %r: %r", userdata, activechan._lineno, 
+                                                           nick, word)
+        activechan.register_special(nick)
 
     def action(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
@@ -257,6 +331,7 @@ class JoinPartFilter(object):
             logger.debug("supressing %r: %r", userdata, word)
             return xchat.EAT_XCHAT
 
+
     def rename(self, word, word_eol, userdata):
         nick1 = remove_mirc_color(word[0])
         nick2 = remove_mirc_color(word[1])
@@ -267,21 +342,5 @@ class JoinPartFilter(object):
             if host == thishost:
                 active.rename(nick1, nick2)
 
-    def cmd_show(self, word, word_eol, userdata):
-        channel = self._get_channel()
-        if self.active[channel]:
-            data = self.active[channel].show()           
-            logger.info('[%s] %s', '@'.join(reversed(channel)), data)
-        else:
-            logger.info('Nothing registered for %r', '@'.join(reversed(channel)))
-        return xchat.EAT_ALL
-
-    def cmd_debug(self, word, word_eol, userdata):
-        if len(word) <= 1:
-            logger.error('Need the level for %r', word[0])
-        else:
-            logger.info("changing debug level to %r", word[1])
-            logger.setLevel(logging.getLevelName(word[1]))
-        return xchat.EAT_ALL
 
 plugin = JoinPartFilter()
