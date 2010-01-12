@@ -35,18 +35,24 @@ import functools
 import re
 import operator
 import textwrap
+import os
 
 from collections import defaultdict
 
 DEBUG_LEVEL = logging.INFO
 
 logger = logging.getLogger('clutterless')
-logger.setLevel(DEBUG_LEVEL)
+logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
+ch.setLevel(DEBUG_LEVEL)
 formatter = logging.Formatter("[%(asctime)s] %(name)s{%(levelname)s}: %(message)s")
 ch.setFormatter(formatter)
 logger.addHandler(ch)
+fh = logging.FileHandler(os.path.expanduser('~/.xchat2/clutterless.log'))
+fh.setLevel(logging.DEBUG)
+formatter = logging.Formatter("[%(asctime)s] %(funcName)s(%(lineno)d) %(name)s{%(levelname)s}: %(message)s")
+fh.setFormatter(formatter)
+logger.addHandler(fh)
 
 def remove_mirc_color(text, 
         _remove_re_sub=re.compile(re.escape("\x03") + 
@@ -68,16 +74,19 @@ class LastSeen(object):
         self._order.append(user)
     
     def clean(self):
-        ammount = max(len(xchat.get_list('users')) * self.perc_cut / 100, 
-                      self.min_users)
-        logger.debug('Searching for last %r', ammount)
+        ammount = int(max(len(xchat.get_list('users')) * self.perc_cut / 100.0, 
+                      self.min_users))
         if len(self._order) > ammount:
-            logger.debug('Cleaning LastSeen %r', self._order[:-ammount])
+            logger.debug('Cleaning %r from last seen, limit %r', 
+                         self._order[:-ammount], ammount)
             del self._order[:-ammount]
     
     def rename(self, nick1, nick2):
-        self._order = [nick2 if nick == nick1 else nick
-                       for nick in self._order]
+        if nick1 in self._order:
+            self._order = [nick2 if nick == nick1 else nick
+                           for nick in self._order]
+            return True
+        return False
 
     def __iter__(self):
         return reversed(self._order)
@@ -93,7 +102,8 @@ class LastSeen(object):
 
 class ActiveChannel(object):
     def __init__(self, timeout=300, autoclean=True, time_func=time.time, 
-                       linecut=30, minlastseen=2, perclastseen=1):
+                       linecut=50, minlastseen=3, perclastseen=1.5):
+        logger.debug('Creating new channel tracking object...')
         self.timeout = timeout
         self.autoclean = autoclean
         self._time = time_func
@@ -176,19 +186,23 @@ class ActiveChannel(object):
         return any(user in check for check in self._checks)
 
     def rename(self, nick1, nick2):
-        self._lastseen.rename(nick1, nick2)
+        changed = self._lastseen.rename(nick1, nick2)
         for d in (self._timeout_data, self._lineno_data):
             if nick1 in d:
                 d[nick2] = d[nick1]
                 del d[nick1]
+                changed = True
         if nick1 in self._special:
             self._special.remove(nick1)
-            self._special.add(nick2)            
+            self._special.add(nick2)
+            changed = True
+        return changed
 
     del autocleans
         
 class JoinPartFilter(object):
     def __init__(self):
+        logger.debug('Initializing...')
         self.active = defaultdict(ActiveChannel)
         for action in (
                     'Channel Action',
@@ -217,19 +231,6 @@ class JoinPartFilter(object):
             xchat.hook_print(special, self.special, userdata=special)
         
         xchat.hook_command('clutter', self._cmd, help=self.cmd_help())
-        xchat.hook_command('', self.verify_errors)
-        self.last_msg = None
-
-    def verify_errors(self, word, word_eol, userdata):
-        nick = self._extract_nick(word[0])
-        if word_eol[0] != self.last_msg:
-            self.last_msg = word_eol[0]
-            if nick == xchat.get_info('nick'):
-                print 'WARNING: Sending message to yourself - repeat to confirm'
-                return xchat.EAT_ALL
-            elif nick and all(nick != user.nick for user in xchat.get_list('users')):
-                print 'WARNING: %r is not here. Repeat to confirm.' % nick
-                return xchat.EAT_ALL
 
     def _extract_nick(self, text):
         nick, sep, rest = text.partition(xchat.get_prefs('completion_suffix'))
@@ -242,7 +243,6 @@ class JoinPartFilter(object):
     def _cmd(self, word, word_eol, userdata):
         logger.debug('CLUTTER command - got %r', word)
         if len(word) < 2:
-            logger.info('helping 1')
             print self.cmd_help()
         else:
             cmd = getattr(self, 'cmd_' + word[1], self.cmd_help)
@@ -293,7 +293,7 @@ class JoinPartFilter(object):
 
         Sets the level of the debug logger
         """
-        logger.setLevel(logging.getLevelName(level))
+        ch.setLevel(logging.getLevelName(level))
         return "clutterless: changing debug level to %r" % level
 
     def _get_channel(self):
@@ -305,42 +305,53 @@ class JoinPartFilter(object):
         nick = self._extract_nick(word[1])
         if nick:
             # a nick, register as special
-            logger.debug('Registering special nick %r', nick)
+            channel = self._get_channel()
             activechan = self.active[self._get_channel()]
+            logger.debug('Talked to %r on %s, registering as special', nick, 
+                         '@'.join(reversed(channel)))
             activechan.register_special(nick)
 
     def special(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])  
-        activechan = self.active[self._get_channel()]
-        logger.debug("%r(%d) special register for %r: %r", userdata, activechan._lineno, 
-                                                           nick, word)
+        channel = self._get_channel()
+        activechan = self.active[channel]
+        logger.debug("%r(%d) special register on %s for %r: %r", userdata, 
+                     activechan._lineno, '@'.join(reversed(channel)), nick, 
+                     word[1:])
         activechan.register_special(nick)
 
     def action(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
-        activechan = self.active[self._get_channel()]
-        logger.debug("%r(%d) register for %r: %r", userdata, activechan._lineno, 
-                                                   nick, word)
+        channel = self._get_channel()
+        activechan = self.active[channel]
+        logger.debug("%r(%d) register on %s for %r: %r", userdata, 
+                     activechan._lineno, '@'.join(reversed(channel)), nick, 
+                     word[1:])
         activechan.register(nick)
 
     def supress(self, word, word_eol, userdata):
         nick = remove_mirc_color(word[0])
-        if nick in self.active[self._get_channel()]:
-            logger.debug("Not supressing %r: %r", userdata, word)
+        channel = self._get_channel()
+        if nick in self.active[channel]:
+            logger.debug("Not supressing %s on %s: %r", userdata, 
+                         '@'.join(reversed(channel)), wordeol[0])
         else:
-            logger.debug("supressing %r: %r", userdata, word)
+            logger.debug("Supressing %r on %s: %r", userdata, 
+                         '@'.join(reversed(channel)), word)
             return xchat.EAT_XCHAT
-
 
     def rename(self, word, word_eol, userdata):
         nick1 = remove_mirc_color(word[0])
         nick2 = remove_mirc_color(word[1])
-        logger.debug("Renaming %r to %r", nick1, nick2)
+        changes = 0
         # rename happens serverwide
         thishost = xchat.get_context().get_info('host')
         for (host, channel), active in self.active.iteritems():
             if host == thishost:
-                active.rename(nick1, nick2)
+                if active.rename(nick1, nick2):
+                    changes += 1
+        logger.debug("Renaming %r to %r on %s - %d channels changed",
+                     nick1, nick2, thishost, changes)
 
 
 plugin = JoinPartFilter()
