@@ -16,9 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-__module_name__ = "hebrew-xchat"
+__module_name__ = "hybrid_decode"
 __module_version__ = "0.0.1"
-__module_description__ = "Tries to solve garbage problems when talking to hebrew people"
+__module_description__ = "Charset conversion script"
+
+FALLBACK = 'cp1255'
 
 import xchat
 
@@ -26,7 +28,15 @@ def _force_unicode(text):
     try:
         result = text.decode('utf-8')
     except UnicodeDecodeError:
-        result = text.decode('cp1255')
+        result = text.decode(FALLBACK)
+    return result
+
+def _convert_piece(text):
+    text = text.decode('utf-8')
+    try:
+        result = text.encode('latin1').decode(FALLBACK).encode('utf-8')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        result = text.encode('utf-8')
     return result
 
 ignore = False
@@ -34,11 +44,12 @@ ignore = False
 def convert_chars(word, word_eol, user_data):
     global ignore
     if not ignore:
-        word = [_force_unicode(w).encode('utf-8') for w in word]
+        print word
+        word = [_convert_piece(w) for w in word]
         ignore = True
         xchat.emit_print(user_data, *word)
         ignore = False
-        return xchat.EAT_XCHAT
+        return xchat.EAT_ALL
         
 for act in (
         'Channel Action',
