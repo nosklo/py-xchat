@@ -71,8 +71,10 @@ class MyFirstIRCProtocol(irc.IRCClient):
         return ['Pong.']
     
     def command_test(self, rest):
-        return ['utf-8 hebrew: \xd7\x98', 'cp1255 hebrew: \xe8']
+        return ['utf-8 hebrew: \xd7\x98', 'cp1255 hebrew: \xe8', 'utf-8 latin1: \xc3\xa1']
     
+    def command_echo(self, rest):
+        return ['I see %r' % rest]
 
 class MyFirstIRCFactory(protocol.ReconnectingClientFactory):
     protocol = MyFirstIRCProtocol
