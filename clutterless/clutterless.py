@@ -28,6 +28,7 @@ __module_name__ = "clutterless"
 __module_version__ = "0.1.2"
 __module_description__ = "Removes clutter from your conversations"
 
+import string
 import xchat
 import time
 import logging
@@ -48,9 +49,9 @@ ch.setLevel(DEBUG_LEVEL)
 formatter = logging.Formatter("[%(asctime)s] %(name)s{%(levelname)s}: %(message)s")
 ch.setFormatter(formatter)
 logger.addHandler(ch)
-fh = logging.FileHandler(os.path.expanduser('~/.xchat2/clutterless.log'))
+fh = logging.FileHandler(os.path.expanduser('~/.xchat2/clutterless.log'), 'w')
 fh.setLevel(logging.DEBUG)
-formatter = logging.Formatter("[%(asctime)s] %(funcName)s(%(lineno)d) %(name)s{%(levelname)s}: %(message)s")
+formatter = logging.Formatter("[%(asctime)s] %(funcName)s(%(lineno)d) {%(levelname)s}: %(message)s")
 fh.setFormatter(formatter)
 logger.addHandler(fh)
 
@@ -161,7 +162,7 @@ class ActiveChannel(object):
             if key in self._special:
                 use_cut *= 5
             if value > use_cut:
-                logger.debug('cleaning %s for %r>%r ', key, value, cut)
+                logger.debug('cleaning %s for %r>%r ', key, value, use_cut)
                 del d[key]
         
     def autocleans(func):
@@ -234,7 +235,7 @@ class JoinPartFilter(object):
 
     def _extract_nick(self, text):
         nick, sep, rest = text.partition(xchat.get_prefs('completion_suffix'))
-        if sep and ' ' not in nick:
+        if sep and ' ' not in nick and rest[:1] not in string.punctuation:
             nick = remove_mirc_color(nick)
             return nick
         else:
@@ -333,8 +334,8 @@ class JoinPartFilter(object):
         nick = remove_mirc_color(word[0])
         channel = self._get_channel()
         if nick in self.active[channel]:
-            logger.debug("Not supressing %s on %s: %r", userdata, 
-                         '@'.join(reversed(channel)), wordeol[0])
+            logger.debug("Allowing %s on %s: %r", userdata, 
+                         '@'.join(reversed(channel)), word)
         else:
             logger.debug("Supressing %r on %s: %r", userdata, 
                          '@'.join(reversed(channel)), word)
