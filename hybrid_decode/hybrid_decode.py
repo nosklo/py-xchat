@@ -42,26 +42,34 @@ CHARSETS_8BIT = set(['437', '850', '852', '855', '860', '861', '862', '863',
                      'macgreek', 'maciceland', 'maclatin2', 'macroman', 
                      'macturkish', 'pt154', 'ptcp154', 'windows-1256'])
 
+MSG_WRONGENC =("hybrid: CHARSET is %r which doesn't support full 8bit "
+               "encoding for %r. Can't convert this message. Setting the "
+               'CHARSET to latin1 now so it can work from now on.\r\n'
+               'Configure xchat to any 8bit encoding using either '
+               '/CHARSET <encoding> or the server preferences window '
+               'before loading the plugin to prevent this message on the '
+               'future.')
+
 EVENTS = [
-  ("Channel Action", 1),
-  ("Channel Action Hilight", 1),
-  ("Channel Message", 1),
-  ("Channel Msg Hilight", 1),
-  ("Channel Notice", 2),
-  ("Generic Message", (0, 1)),
-  ("Kick", 3),
-  ("Killed", 1),
-  ("Motd", 0),
-  ("Notice", 1),
-  ("Part with Reason", 3),
-  ("Private Message", 1),
-  ("Private Message to Dialog", 1),
-  ("Quit", 1),
-  ("Receive Wallops", 1),
-  ("Server Notice", 0),
-  ("Server Text", 0),
-  ("Topic", 1),
-  ("Topic Change", 1),
+  ("Channel Action", [1]),
+  ("Channel Action Hilight", [1]),
+  ("Channel Message", [1]),
+  ("Channel Msg Hilight", [1]),
+  ("Channel Notice", [2]),
+  ("Generic Message", [0, 1]),
+  ("Kick", [3]),
+  ("Killed", [1]),
+  ("Motd", [0]),
+  ("Notice", [1]),
+  ("Part with Reason", [3]),
+  ("Private Message", [1]),
+  ("Private Message to Dialog", [1]),
+  ("Quit", [1]),
+  ("Receive Wallops", [1]),
+  ("Server Notice", [0]),
+  ("Server Text", [0]),
+  ("Topic", [1]),
+  ("Topic Change", [1]),
 ]
 
 import xchat
@@ -69,12 +77,17 @@ import xchat
 class Plugin(object):
     def __init__(self):
 #        self._server_charset = {}
-        self.fallbacks = ['cp1255']
-        self._ignore = False
+        self.fallbacks = ['cp1255'] # that will be configurable and user-settable.
+        self._ignore_receive = False
+        self._ignore_send = False
         for event in EVENTS:
             xchat.hook_print(event[0], self.convert, event, 
                              priority=xchat.PRI_HIGHEST)
-#        xchat.hook_unload(self.cleanup, priority=xchat.PRI_HIGHEST)
+#        xchat.hook_command('', self.debug_print, 'all', priority=xchat.PRI_HIGHEST)
+        xchat.hook_command('', self.fix_sends, priority=xchat.PRI_HIGHEST)
+        for cmd in ('SAY', 'ME', 'MSG'):
+            xchat.hook_command(cmd, self.fix_sendcmd, cmd, priority=xchat.PRI_HIGHEST)
+#        xchat.hook_command('SAY', self.fix_sends_say, priority=xchat.PRI_HIGH)
         
     def _convert_piece(self, text, used_charset):
         raw = text.decode('utf-8').encode(used_charset)
@@ -93,27 +106,69 @@ class Plugin(object):
         return result.encode('utf-8')
                 
     def convert(self, word, word_eol, userdata):
-        if self._ignore:
+        if self._ignore_receive:
             return
         event, pos = userdata
         charset = xchat.get_info('charset')
-        if charset not in CHARSETS_8BIT:
+        if charset and charset.lower() in CHARSETS_8BIT:
+            for p in pos:
+                word[p] = self._convert_piece(word[p], charset)
+            self._ignore_receive = True
+            xchat.emit_print(event, *word)
+            self._ignore_receive = False
+            return xchat.EAT_ALL
+        else:
             host = xchat.get_info('host')
-            print ('hybrid: Charset was not set to any supported 8BIT '
-                   "encoding for %r. Can't convert this message. Setting the "
-                   'CHARSET to latin1 now so it can work from now on.\r\n'
-                   'Configure xchat to any 8bit encoding using either '
-                   '/CHARSET <encoding> or the server preferences window '
-                   'before loading the plugin to prevent this message on the '
-                   'future.' % host)
+            print MSG_WRONGENC % (charset, host)
             xchat.command('CHARSET latin1')
 #            self._server_charset[host] = charset
+
+    def debug_print(self, word, word_eol, user_data):
+        self._ignore_debug = True
+        if word_eol[0]:
+            print user_data, repr(word_eol[0])
         else:
-            word[pos] = self._convert_piece(word[pos], charset)
-            self._ignore = True
-            xchat.emit_print(event, *word)
-            self._ignore = False
-            return xchat.EAT_ALL
+            print user_data, '-> empty event!'
+        self._ignore_debug = False
+
+    def fix_sendcmd(self, word, word_eol, user_data):
+        if self._ignore_send or len(word_eol) < 2:
+            return
+        charset = xchat.get_info('charset')
+        xchat.command('CHARSET -quiet UTF-8')
+        self._ignore_send = True
+        xchat.command('%s %s' % (word[0], word_eol[1]))
+        self._ignore_send = False
+        xchat.command('CHARSET -quiet ' + charset)
+        return xchat.EAT_ALL
+        
+    def fix_sends(self, word, word_eol, user_data):
+        if self._ignore_send:
+            return
+        word = ['SAY']
+        word_eol = [None, word_eol[0]]
+        return self.fix_sendcmd(word, word_eol, user_data)
+
+#    def fix_sends(self, word, word_eol, user_data):
+#        if self._ignore:
+#            return
+#        charset = xchat.get_info('charset')
+#        # change whatever is being sent to double-encoded utf-8
+#        if charset and charset.lower() in CHARSETS_8BIT:
+#            word_eol = word_eol[0].decode(charset).encode('utf-8')
+#            self._ignore = True
+#            xchat.command('SAY ' + word_eol)
+#            self._ignore = False
+#            return xchat.EAT_ALL
+#        else:
+#            host = xchat.get_info('host')
+#            print MSG_WRONGENC % (charset, host)
+#            xchat.command('CHARSET latin1')
+
+    def fix_sends_say(self, word, word_eol, user_data):
+        if self._ignore:
+            return
+        return self.fix_sends([], word_eol[1:], user_data)
 
 p = Plugin()
 
@@ -146,8 +201,6 @@ p = Plugin()
 #    xchat.hook_print(act, convert_chars, act, priority=xchat.PRI_HIGHEST)
 #    
 
-#def print_me(word, word_eol, user_data):
-#    print word
 
 #xchat.hook_server("PRIVMSG", print_me)
 
