@@ -26,12 +26,13 @@ __module_description__ = "Warns you about stupid things"
 
 import xchat
 import re
+import string
 
 last_msg = None
 
 def _extract_nick(text):
     nick, sep, rest = text.partition(xchat.get_prefs('completion_suffix'))
-    if sep and ' ' not in nick:
+    if sep and ' ' not in nick and rest[:1] not in string.punctuation:
         nick = remove_mirc_color(nick)
         return nick
     else:
