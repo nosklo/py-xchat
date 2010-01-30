@@ -30,22 +30,22 @@ import string
 
 last_msg = None
 
-def _extract_nick(text):
-    nick, sep, rest = text.partition(xchat.get_prefs('completion_suffix'))
-    if sep and ' ' not in nick and rest[:1] not in string.punctuation:
-        nick = remove_mirc_color(nick)
-        return nick
-    else:
-        return None
-
 def remove_mirc_color(text, 
         _remove_re_sub=re.compile(re.escape("\x03") + 
                                   r"(?:(\d{1,2})(?:,(\d{1,2}))?)?").sub):
     return _remove_re_sub('', text)
 
+def split_nick(text, seps=':,'):
+    seps = '|'.join(re.escape(sep) for sep in seps)
+    re_nick = re.compile(r"([\D_][\w_]+)(?:%s)([\s\w].*)$" % (seps,))
+    m = re_nick.match(remove_mirc_color(text))
+    if m:
+        return m.groups()
+    return (None, None)
+
 def verify_errors(word, word_eol, userdata):
     global last_msg
-    nick = _extract_nick(word_eol[0])
+    nick, rest = split_nick(word_eol[0], seps=[xchat.get_prefs('completion_suffix')])
     if word_eol[0] != last_msg:
         last_msg = word_eol[0]
         if nick == xchat.get_info('nick'):
