@@ -60,6 +60,14 @@ def remove_mirc_color(text,
                                   r"(?:(\d{1,2})(?:,(\d{1,2}))?)?").sub):
     return _remove_re_sub('', text)
 
+def split_nick(text, seps=':,'):
+    seps = '|'.join(re.escape(sep) for sep in seps)
+    re_nick = re.compile(r"([\D_][\w_]+)(?:%s)([\s\w].*)$" % (seps,))
+    m = re_nick.match(remove_mirc_color(text))
+    if m:
+        return m.groups()
+    return (None, None)
+
 class LastSeen(object):
     def __init__(self, min_users, perc_cut, data=None):
         if data is None:
@@ -233,13 +241,6 @@ class JoinPartFilter(object):
         
         xchat.hook_command('clutter', self._cmd, help=self.cmd_help())
 
-    def _extract_nick(self, text):
-        nick, sep, rest = text.partition(xchat.get_prefs('completion_suffix'))
-        if sep and ' ' not in nick and rest[:1] not in string.punctuation:
-            nick = remove_mirc_color(nick)
-            return nick
-        else:
-            return None
 
     def _cmd(self, word, word_eol, userdata):
         logger.debug('CLUTTER command - got %r', word)
@@ -303,7 +304,7 @@ class JoinPartFilter(object):
     
     def message(self, word, word_eol, user):
         """People you talk to becomes *special* - can have more timeout"""
-        nick = self._extract_nick(word[1])
+        nick, rest = split_nick(word[1], seps=[xchat.get_prefs('completion_suffix')])
         if nick:
             # a nick, register as special
             channel = self._get_channel()

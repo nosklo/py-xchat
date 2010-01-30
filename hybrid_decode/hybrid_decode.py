@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#TODO: Config
+
 __module_name__ = "hybrid_decode"
 __module_version__ = "0.0.1"
 __module_description__ = "Charset conversion script"
