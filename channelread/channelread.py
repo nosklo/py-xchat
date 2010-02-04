@@ -198,3 +198,4 @@ class TextToSpeech(object):
         self.p.stdin.flush()
 
 plugin = TextToSpeech()
+print 'Plugin %s loaded - for help use /AUDIO HELP' % (__module_name__,)
