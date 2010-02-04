@@ -66,7 +66,7 @@ class TextToSpeech(object):
         if len(word) < 2:
             print self.cmd_help()
         else:
-            cmd = getattr(self, 'cmd_' + word[1], self.cmd_help)
+            cmd = getattr(self, 'cmd_' + word[1].lower(), self.cmd_help)
             try:
                 result = cmd(*word[2:])
             except TypeError as e:
@@ -81,7 +81,7 @@ class TextToSpeech(object):
             self.p.kill()
             self.p.wait()
 
-    def cmd_help(self, command=None):
+    def cmd_help(self, command=None, *extra):
         """
         Syntax: /AUDIO HELP [command]
 
@@ -89,7 +89,7 @@ class TextToSpeech(object):
         """
         if command:
             try:
-                result = getattr(self, 'cmd_' + command).__doc__
+                result = getattr(self, 'cmd_' + command.lower()).__doc__
             except AttributeError:
                 result = None
             if result is None:
