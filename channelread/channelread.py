@@ -21,7 +21,7 @@ Channelread
 Allows you to enable/disable audio reading for a specific channel
 """
 __module_name__ = "channelread"
-__module_version__ = "0.0.1"
+__module_version__ = "0.0.2"
 __module_description__ = "Allows enabling/disabling text-to-speech on each channel"
 
 import xchat
