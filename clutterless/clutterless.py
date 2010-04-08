@@ -173,25 +173,21 @@ class ActiveChannel(object):
                 logger.debug('cleaning %s for %r>%r ', key, value, use_cut)
                 del d[key]
         
-    def autocleans(func):
-        @functools.wraps(func)
-        def _method(self, *args, **kwds):
-            if self.autoclean:
-                self.clean()
-            return func(self, *args, **kwds)
-        return _method
+    def _autoclean(self):
+        if self.autoclean:
+            return self.clean()
 
-    @autocleans
     def __len__(self):
+        self._autoclean()
         return sum(len(check) for check in self._checks)
 
-    @autocleans
     def __contains__(self, user):
         """
         checks if an user is active in the channel
         user: the user to search
         returns: True if the user has been active
         """
+        self._autoclean()
         return any(user in check for check in self._checks)
 
     def rename(self, nick1, nick2):
@@ -206,29 +202,26 @@ class ActiveChannel(object):
             self._special.add(nick2)
             changed = True
         return changed
-
-    del autocleans
         
 class JoinPartFilter(object):
     def __init__(self):
         logger.debug('Initializing...')
         self.active = defaultdict(ActiveChannel)
-        for action in (
-                    'Channel Action',
-                    'Channel Action Hilight',
-                    'DCC CHAT Offer',
-                    'Channel Message',
+        for action, args in (
+                    ('Channel Action', [0]),
+                    ('Channel Action Hilight', [0]),
+                    ('DCC CHAT Offer', [0]),
+                    ('Channel Message', [0]),
                 ):
-            xchat.hook_print(action, self.action, userdata=action)
-        for supressed in (
-                    'Join',
-                    'Part',
-                    'Part with Reason',
-                    'Change Nick',
-                    'Quit',
+            xchat.hook_print(action, self.action, userdata=(action, args))
+        for supressed, args in (
+                    ('Join', [0]),
+                    ('Part', [0]),
+                    ('Part with Reason', [0]),
+                    ('Change Nick', [0, 1]),
+                    ('Quit', [0]),
                 ):
-            xchat.hook_print(supressed, self.supress, userdata=supressed)
-        
+            xchat.hook_print(supressed, self.supress, userdata=(supressed, args))
         
         xchat.hook_print('Change Nick', self.rename, priority=xchat.PRI_LOW)
         
@@ -314,33 +307,39 @@ class JoinPartFilter(object):
             activechan.register_special(nick)
 
     def special(self, word, word_eol, userdata):
-        nick = remove_mirc_color(word[0])  
-        channel = self._get_channel()
-        activechan = self.active[channel]
-        logger.debug("%r(%d) special register on %s for %r: %r", userdata, 
-                     activechan._lineno, '@'.join(reversed(channel)), nick, 
-                     word[1:])
-        activechan.register_special(nick)
+        act, nicks = userdata
+        for nick in nicks:
+            nick = remove_mirc_color(word[nick])
+            channel = self._get_channel()
+            activechan = self.active[channel]
+            logger.debug("%r(%d) special register on %s for %r: %r", userdata, 
+                         activechan._lineno, '@'.join(reversed(channel)), nick, 
+                         word[1:])
+            activechan.register_special(nick)
 
     def action(self, word, word_eol, userdata):
-        nick = remove_mirc_color(word[0])
-        channel = self._get_channel()
-        activechan = self.active[channel]
-        logger.debug("%r(%d) register on %s for %r: %r", userdata, 
-                     activechan._lineno, '@'.join(reversed(channel)), nick, 
-                     word[1:])
-        activechan.register(nick)
+        act, nicks = userdata
+        for nick in nicks:
+            nick = remove_mirc_color(word[nick])
+            channel = self._get_channel()
+            activechan = self.active[channel]
+            logger.debug("%r(%d) register on %s for %r: %r", userdata, 
+                         activechan._lineno, '@'.join(reversed(channel)), nick, 
+                         word[1:])
+            activechan.register(nick)
 
     def supress(self, word, word_eol, userdata):
-        nick = remove_mirc_color(word[0])
-        channel = self._get_channel()
-        if nick in self.active[channel]:
-            logger.debug("Allowing %s on %s: %r", userdata, 
-                         '@'.join(reversed(channel)), word)
-        else:
-            logger.debug("Supressing %r on %s: %r", userdata, 
-                         '@'.join(reversed(channel)), word)
-            return xchat.EAT_XCHAT
+        act, nicks = userdata
+        for nick in nicks:
+            nick = remove_mirc_color(word[nick])
+            channel = self._get_channel()
+            if nick in self.active[channel]:
+                logger.debug("Allowing %s on %s: %r", userdata, 
+                             '@'.join(reversed(channel)), word)
+            else:
+                logger.debug("Supressing %r on %s: %r", userdata, 
+                             '@'.join(reversed(channel)), word)
+                return xchat.EAT_XCHAT
 
     def rename(self, word, word_eol, userdata):
         nick1 = remove_mirc_color(word[0])

@@ -37,7 +37,7 @@ def remove_mirc_color(text,
 
 class TextToSpeech(object):
     def __init__(self):
-        self._enabled = set()
+        self._enabled = {}
         for action in (
                     'Channel Action',
                     'Channel Action Hilight',
@@ -48,7 +48,7 @@ class TextToSpeech(object):
         xchat.hook_command('audio', self._cmd, help=self.cmd_help())
         xchat.hook_unload(self.kill)
         self.p = None
-        self.voice = 'en'
+        self.voice = 'en-us'
         self.speed = 170
         self.pitch = 50
         
@@ -100,9 +100,9 @@ class TextToSpeech(object):
                     ', '.join(cmd[4:] for cmd in dir(self) 
                              if cmd.startswith('cmd_')))
         
-    def cmd_on(self):
+    def cmd_on(self, voice):
         """
-        Syntax: /AUDIO ON
+        Syntax: /AUDIO ON [voice]
         
         Turns on audio speech for a channel.
         """
