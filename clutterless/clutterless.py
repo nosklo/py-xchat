@@ -307,15 +307,14 @@ class JoinPartFilter(object):
             activechan.register_special(nick)
 
     def special(self, word, word_eol, userdata):
-        act, nicks = userdata
-        for nick in nicks:
-            nick = remove_mirc_color(word[nick])
-            channel = self._get_channel()
-            activechan = self.active[channel]
-            logger.debug("%r(%d) special register on %s for %r: %r", userdata, 
-                         activechan._lineno, '@'.join(reversed(channel)), nick, 
-                         word[1:])
-            activechan.register_special(nick)
+        act = userdata
+        nick = remove_mirc_color(word[0])
+        channel = self._get_channel()
+        activechan = self.active[channel]
+        logger.debug("%r(%d) special register on %s for %r: %r", userdata, 
+                     activechan._lineno, '@'.join(reversed(channel)), nick, 
+                     word[1:])
+        activechan.register_special(nick)
 
     def action(self, word, word_eol, userdata):
         act, nicks = userdata
@@ -336,10 +335,11 @@ class JoinPartFilter(object):
             if nick in self.active[channel]:
                 logger.debug("Allowing %s on %s: %r", userdata, 
                              '@'.join(reversed(channel)), word)
+                return xchat.EAT_NONE
             else:
                 logger.debug("Supressing %r on %s: %r", userdata, 
                              '@'.join(reversed(channel)), word)
-                return xchat.EAT_XCHAT
+        return xchat.EAT_XCHAT
 
     def rename(self, word, word_eol, userdata):
         nick1 = remove_mirc_color(word[0])
