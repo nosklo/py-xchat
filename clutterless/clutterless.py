@@ -25,7 +25,7 @@ For now it only removes join/parts, more to come. See TODO.
 TODO: Create a TODO.
 """
 __module_name__ = "clutterless"
-__module_version__ = "0.1.2"
+__module_version__ = "0.1.3"
 __module_description__ = "Removes clutter from your conversations"
 
 import string
@@ -275,12 +275,14 @@ class JoinPartFilter(object):
         Shows clutterless stored information about current channel.
         """
         channel = self._get_channel()
-        if self.active[channel]:
-            data = self.active[channel].info()           
-            return 'clutterless data for [%s]:\n%s' % ('@'.join(reversed(channel)), 
-                                                       data)
-        else:
+        active_channel = self.active[channel]
+        if active_channel is None:        
+            return 'clutterless: Channel is disabled'
+        elif not active_channel:
             return 'clutterless: No data on [%s]' % '@'.join(reversed(channel))
+        data = self.active[channel].info()           
+        return 'clutterless: data for [%s]:\n%s' % ('@'.join(reversed(channel)), 
+                                                       data)
 
     def cmd_debug(self, level):
         """
@@ -290,6 +292,32 @@ class JoinPartFilter(object):
         """
         ch.setLevel(logging.getLevelName(level))
         return "clutterless: changing debug level to %r" % level
+
+    def cmd_enable(self):
+        """
+        Syntax: /CLUTTER ENABLE
+
+        Enable clutterless filtering for the current channel
+        """
+        channel = self._get_channel()
+        if self.active[channel] is not None:
+            return 'clutterless: Channel %s is already enabled!' % (channel,)
+        logger.debug("Enabling %s", channel)
+        self.active[channel] = ActiveChannel()
+        return 'clutterless: Now tracking channel %s' % (channel,)
+
+    def cmd_disable(self):
+        """
+        Syntax: /CLUTTER DISABLE
+
+        Disable clutterless filtering for the current channel
+        """
+        channel = self._get_channel()
+        if self.active[channel] is None:
+            return 'clutterless: Channel %s is already disabled!' % (channel,)
+        logger.debug("Disabling %s", channel)
+        self.active[channel] = None
+        return 'clutterless: Channel %s is now disabled' % (channel,)
 
     def _get_channel(self):
         info = xchat.get_context().get_info
@@ -302,6 +330,10 @@ class JoinPartFilter(object):
             # a nick, register as special
             channel = self._get_channel()
             activechan = self.active[self._get_channel()]
+            if activechan is None:
+                logger.debug('Channel %s is disabled, ignoring conversation', 
+                    '@'.join(reversed(channel)))
+                return
             logger.debug('Talked to %r on %s, registering as special', nick, 
                          '@'.join(reversed(channel)))
             activechan.register_special(nick)
@@ -311,6 +343,10 @@ class JoinPartFilter(object):
         nick = remove_mirc_color(word[0])
         channel = self._get_channel()
         activechan = self.active[channel]
+        if activechan is None:
+            logger.debug('Channel %s is disabled, ignoring conversation', 
+                '@'.join(reversed(channel)))
+            return        
         logger.debug("%r(%d) special register on %s for %r: %r", userdata, 
                      activechan._lineno, '@'.join(reversed(channel)), nick, 
                      word[1:])
@@ -322,6 +358,10 @@ class JoinPartFilter(object):
             nick = remove_mirc_color(word[nick])
             channel = self._get_channel()
             activechan = self.active[channel]
+            if activechan is None:
+                logger.debug('Channel %s is disabled, ignoring action', 
+                    '@'.join(reversed(channel)))
+                return
             logger.debug("%r(%d) register on %s for %r: %r", userdata, 
                          activechan._lineno, '@'.join(reversed(channel)), nick, 
                          word[1:])
@@ -332,6 +372,11 @@ class JoinPartFilter(object):
         for nick in nicks:
             nick = remove_mirc_color(word[nick])
             channel = self._get_channel()
+            activechan = self.active[channel]
+            if activechan is None:
+                logger.debug('Channel %s is disabled, allowing message', 
+                    '@'.join(reversed(channel)))
+                return xchat.EAT_NONE
             if nick in self.active[channel]:
                 logger.debug("Allowing %s on %s: %r", userdata, 
                              '@'.join(reversed(channel)), word)
@@ -349,7 +394,7 @@ class JoinPartFilter(object):
         thishost = xchat.get_context().get_info('host')
         for (host, channel), active in self.active.iteritems():
             if host == thishost:
-                if active.rename(nick1, nick2):
+                if active and active.rename(nick1, nick2):
                     changes += 1
         logger.debug("Renaming %r to %r on %s - %d channels changed",
                      nick1, nick2, thishost, changes)
