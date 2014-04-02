@@ -29,7 +29,6 @@ __module_version__ = "0.1.3"
 __module_description__ = "Removes clutter from your conversations"
 
 import string
-import xchat
 import time
 import logging
 import functools
@@ -40,6 +39,18 @@ import os
 
 from collections import defaultdict
 
+try:
+    import hexchat as xchat
+    xchat.EAT_XCHAT = xchat.EAT_HEXCHAT
+    CONFIGDIR = '~/.config/hexchat'
+except ImportError:
+    try:
+        import xchat
+        CONFIGDIR = '~/.xchat2'
+    except ImportError:
+        print('XChat/HexChat not found!')
+        exit(1)
+LOGFILE = os.path.expanduser(os.path.join(CONFIGDIR, 'clutterless.log'))
 DEBUG_LEVEL = logging.INFO
 
 logger = logging.getLogger('clutterless')
@@ -49,7 +60,7 @@ ch.setLevel(DEBUG_LEVEL)
 formatter = logging.Formatter("[%(asctime)s] %(name)s{%(levelname)s}: %(message)s")
 ch.setFormatter(formatter)
 logger.addHandler(ch)
-fh = logging.FileHandler(os.path.expanduser('~/.xchat2/clutterless.log'), 'w')
+fh = logging.FileHandler(LOGFILE, 'w')
 fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter("[%(asctime)s] %(funcName)s(%(lineno)d) {%(levelname)s}: %(message)s")
 fh.setFormatter(formatter)
