@@ -25,7 +25,7 @@ For now it only removes join/parts, more to come. See TODO.
 TODO: Create a TODO.
 """
 __module_name__ = "clutterless"
-__module_version__ = "0.1.3"
+__module_version__ = "0.2.0"
 __module_description__ = "Removes clutter from your conversations"
 
 import string
@@ -71,9 +71,9 @@ def remove_mirc_color(text,
                                   r"(?:(\d{1,2})(?:,(\d{1,2}))?)?").sub):
     return _remove_re_sub('', text)
 
-def split_nick(text, seps=':,'):
+def split_nick(text, seps=(':', ',')):
     seps = '|'.join(re.escape(sep) for sep in seps)
-    re_nick = re.compile(r"([\D_][\w_]+)(?:%s)([\s\w].*)$" % (seps,))
+    re_nick = re.compile(r"([\D_][\w_]+)(?:{})([\s\w].*)$".format(seps))
     m = re_nick.match(remove_mirc_color(text))
     if m:
         return m.groups()
@@ -97,8 +97,8 @@ class LastSeen(object):
         ammount = int(max(len(xchat.get_list('users')) * self.perc_cut / 100.0, 
                       self.min_users))
         if len(self._order) > ammount:
-            logger.debug('Cleaning %r from last seen, limit %r', 
-                         self._order[:-ammount], ammount)
+            logger.debug('Cleaning {!r} from last seen, limit {!r}'.format(
+                         self._order[:-ammount], ammount))
             del self._order[:-ammount]
     
     def rename(self, nick1, nick2):
@@ -118,7 +118,7 @@ class LastSeen(object):
         return len(self._order)
 
     def __repr__(self):
-        return 'LastSeen(%d, %r)' % (self.ammount, self._order)
+        return '<LastSeen {})'.format(self._order)
 
 class ActiveChannel(object):
     def __init__(self, timeout=300, autoclean=True, time_func=time.time, 
@@ -152,13 +152,13 @@ class ActiveChannel(object):
         self.register(nick)
 
     def info(self):
-        timeout_data = ' '.join('%s[%.2f]' % (nick, time.time() - t)
+        timeout_data = ' '.join('{}[{:.2f}]'.format(nick, time.time() - t)
                                 for nick, t
-                                in sorted(self._timeout_data.iteritems(),
+                                in sorted(self._timeout_data.items(),
                                           key=operator.itemgetter(1)))
         lineno_data = ' '.join('%s[%d]' % (nick, self._lineno - t)
                                for nick, t
-                               in sorted(self._lineno_data.iteritems(),
+                               in sorted(self._lineno_data.items(),
                                          key=operator.itemgetter(1)))
 
         lastseen_data = ','.join(self._lastseen)
@@ -249,7 +249,7 @@ class JoinPartFilter(object):
     def _cmd(self, word, word_eol, userdata):
         logger.debug('CLUTTER command - got %r', word)
         if len(word) < 2:
-            print self.cmd_help()
+            print(self.cmd_help())
         else:
             cmd = getattr(self, 'cmd_' + word[1], self.cmd_help)
             try:
@@ -257,7 +257,7 @@ class JoinPartFilter(object):
             except TypeError as e:
                 result = str(e)
             if result:
-                print textwrap.dedent(result).strip().replace('\n', '\r\n')
+                print(textwrap.dedent(result).strip().replace('\n', '\r\n'))
         return xchat.EAT_ALL
 
     def cmd_help(self, command=None):
@@ -290,9 +290,9 @@ class JoinPartFilter(object):
         if active_channel is None:        
             return 'clutterless: Channel is disabled'
         elif not active_channel:
-            return 'clutterless: No data on [%s]' % '@'.join(reversed(channel))
+            return 'clutterless: No data on [{}]'.format('@'.join(reversed(channel)))
         data = self.active[channel].info()           
-        return 'clutterless: data for [%s]:\n%s' % ('@'.join(reversed(channel)), 
+        return 'clutterless: data for [{}]:\n{}'.format('@'.join(reversed(channel)),
                                                        data)
 
     def cmd_debug(self, level):
@@ -302,7 +302,7 @@ class JoinPartFilter(object):
         Sets the level of the debug logger
         """
         ch.setLevel(logging.getLevelName(level))
-        return "clutterless: changing debug level to %r" % level
+        return "clutterless: changing debug level to {!r}".format(level)
 
     def cmd_enable(self):
         """
@@ -312,10 +312,10 @@ class JoinPartFilter(object):
         """
         channel = self._get_channel()
         if self.active[channel] is not None:
-            return 'clutterless: Channel %s is already enabled!' % (channel,)
+            return 'clutterless: Channel {} is already enabled!'.format(channel)
         logger.debug("Enabling %s", channel)
         self.active[channel] = ActiveChannel()
-        return 'clutterless: Now tracking channel %s' % (channel,)
+        return 'clutterless: Now tracking channel {}'.format(channel)
 
     def cmd_disable(self):
         """
@@ -325,10 +325,10 @@ class JoinPartFilter(object):
         """
         channel = self._get_channel()
         if self.active[channel] is None:
-            return 'clutterless: Channel %s is already disabled!' % (channel,)
-        logger.debug("Disabling %s", channel)
+            return 'clutterless: Channel {} is already disabled!'.format(channel)
+        logger.debug("Disabling {}".format(channel))
         self.active[channel] = None
-        return 'clutterless: Channel %s is now disabled' % (channel,)
+        return 'clutterless: Channel {} is now disabled'.format(channel)
 
     def _get_channel(self):
         info = xchat.get_context().get_info
@@ -342,7 +342,7 @@ class JoinPartFilter(object):
             channel = self._get_channel()
             activechan = self.active[self._get_channel()]
             if activechan is None:
-                logger.debug('Channel %s is disabled, ignoring conversation', 
+                logger.debug('Channel %s is disabled, ignoring conversation',
                     '@'.join(reversed(channel)))
                 return
             logger.debug('Talked to %r on %s, registering as special', nick, 
@@ -403,7 +403,7 @@ class JoinPartFilter(object):
         changes = 0
         # rename happens serverwide
         thishost = xchat.get_context().get_info('host')
-        for (host, channel), active in self.active.iteritems():
+        for (host, channel), active in self.active.items():
             if host == thishost:
                 if active and active.rename(nick1, nick2):
                     changes += 1
