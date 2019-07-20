@@ -118,7 +118,7 @@ class LastSeen(object):
         return len(self._order)
 
     def __repr__(self):
-        return '<LastSeen {})'.format(self._order)
+        return '<LastSeen {}>'.format(self._order)
 
 class ActiveChannel(object):
     def __init__(self, timeout=300, autoclean=True, time_func=time.time, 
@@ -156,7 +156,7 @@ class ActiveChannel(object):
                                 for nick, t
                                 in sorted(self._timeout_data.items(),
                                           key=operator.itemgetter(1)))
-        lineno_data = ' '.join('%s[%d]' % (nick, self._lineno - t)
+        lineno_data = ' '.join('{}[{}]'.format(nick, self._lineno - t)
                                for nick, t
                                in sorted(self._lineno_data.items(),
                                          key=operator.itemgetter(1)))
@@ -175,7 +175,7 @@ class ActiveChannel(object):
                             if any(nick in check for check in self._checks[:-1]))
                 
     def _cleandict(self, d, base, cut):
-        for key, value in d.items():
+        for key, value in list(d.items()):
             value = base - value
             use_cut = cut
             if key in self._special:
